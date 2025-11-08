@@ -1,0 +1,555 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider     = "sqlite"
+  url          = env("DATABASE_URL")
+}
+
+// Department model for college structure
+model Department {
+  id          String @id @default(uuid())
+  name        String @unique
+  code        String @unique // e.g., "CS", "EE", "ME"
+  description String?
+  
+  headOfDepartmentId String?
+  headOfDepartment   User?   @relation("DepartmentHead", fields: [headOfDepartmentId], references: [id])
+  
+  users       User[]
+  courses     Course[]
+  discussions Discussion[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now())
+}
+
+// User model with enhanced college fields
+model User {
+  id            String   @id @default(uuid())
+  clerkId       String   @unique
+  email         String   @unique
+  firstName     String?
+  lastName      String?
+  imageUrl      String?
+  role          String   @default("LEARNER") // ADMIN, EDUCATOR, LEARNER, GUEST
+  bio           String?
+  specialization String?
+  contactInfo   String?
+  
+  // College-specific fields
+  departmentId  String?
+  department    Department? @relation(fields: [departmentId], references: [id])
+  
+  // Student fields
+  enrollmentId  String? // College enrollment/registration number
+  year          String? // Academic year: "1", "2", "3", "4"
+  branch        String? // Branch/stream
+  
+  // Educator fields
+  designation   String? // Professor, Associate Professor, Assistant Professor, Lecturer
+  facultyId     String? // Faculty ID number
+  researchInterests String? // JSON array of research areas
+  publications  String? // JSON array of publications
+  officeHours   String? // Office hours timing
+  
+  // Stats
+  rating        Float?  @default(0)
+  totalRatings  Int     @default(0)
+  
+  // Onboarding
+  isOnboarded   Boolean @default(false)
+  
+  // Relations
+  coursesCreated Course[]
+  enrollments    Enrollment[]
+  progress       Progress[]
+  quizAttempts   QuizAttempt[]
+  assignments    AssignmentSubmission[]
+  discussions    Discussion[]
+  comments       Comment[]
+  votes          Vote[]
+  certificates   Certificate[]
+  departmentHead Department[] @relation("DepartmentHead")
+  ratings        CourseRating[]
+  sharedMaterials SharedMaterial[] @relation("EducatorMaterials")
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now())
+  
+  @@index([departmentId])
+  @@index([role])
+}
+
+model Course {
+  id           String  @id @default(uuid())
+  instructorId String
+  instructor   User    @relation(fields: [instructorId], references: [id], onDelete: Cascade)
+  
+  title        String
+  subtitle     String?
+  description  String?
+  imageUrl     String?
+  price        Float?
+  isPublished  Boolean @default(false)
+  
+  // College-specific fields
+  departmentId String?
+  department   Department? @relation(fields: [departmentId], references: [id])
+  
+  tags         String? // JSON array of tags
+  branch       String?
+  academicYear String?
+  creditHours  Int?
+  duration     String? // e.g., "12 weeks", "1 semester"
+  
+  // Visibility
+  visibility   String @default("PUBLIC") // PUBLIC, DEPARTMENT, PRIVATE
+  
+  // Stats
+  enrollmentCount Int @default(0)
+  rating          Float? @default(0)
+  totalRatings    Int @default(0)
+  completionRate  Float? @default(0)
+  
+  // Course metadata
+  prerequisites String? // JSON array of prerequisite course IDs
+  learningOutcomes String? // JSON array of learning outcomes
+  
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id])
+
+  subCategoryId String
+  subCategory   SubCategory @relation(fields: [subCategoryId], references: [id])
+
+  levelId String?
+  level   Level?  @relation(fields: [levelId], references: [id])
+
+  modules      Module[]
+  sections     Section[]
+  enrollments  Enrollment[]
+  purchases    Purchase[]
+  discussions  Discussion[]
+  analytics    CourseAnalytics?
+  ratings      CourseRating[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now())
+
+  @@index([categoryId])
+  @@index([subCategoryId])
+  @@index([levelId])
+  @@index([instructorId])
+  @@index([departmentId])
+  @@index([visibility])
+}
+
+// Module for organizing course content
+model Module {
+  id          String  @id @default(uuid())
+  title       String
+  description String?
+  position    Int
+  
+  courseId String
+  course   Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  
+  sections Section[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now())
+  
+  @@index([courseId])
+}
+
+model Category {
+  id            String        @id @default(uuid())
+  name          String        @unique
+  subCategories SubCategory[]
+  courses       Course[]
+}
+
+model SubCategory {
+  id   String @id @default(uuid())
+  name String
+
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id])
+
+  courses Course[]
+
+  @@index([categoryId])
+}
+
+model Level {
+  id      String   @id @default(uuid())
+  name    String   @unique
+  courses Course[]
+}
+
+model Section {
+  id          String  @id @default(uuid())
+  title       String
+  description String?
+  videoUrl    String?
+  position    Int
+  isPublished Boolean @default(false)
+  isFree      Boolean @default(false)
+  
+  // Support for multiple media types
+  contentType String @default("VIDEO") // VIDEO, PDF, PRESENTATION, AUDIO, DOCUMENT, LINK, ZIP, TEXT
+  fileUrl     String?
+  duration    Int? // in seconds
+
+  courseId String
+  course   Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  
+  moduleId String?
+  module   Module? @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  muxData   MuxData?
+  resources Resource[]
+  progress  Progress[]
+  quizzes   Quiz[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now())
+
+  @@index([courseId])
+  @@index([moduleId])
+}
+
+model MuxData {
+  id         String  @id @default(uuid())
+  assetId    String
+  playbackId String?
+
+  sectionId String  @unique
+  section   Section @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  @@index([sectionId])
+}
+
+model Resource {
+  id      String @id @default(uuid())
+  name    String
+  fileUrl String
+
+  sectionId String
+  section   Section @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now())
+
+  @@index([sectionId])
+}
+
+model Progress {
+  id        String @id @default(uuid())
+  studentId String
+  student   User   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  sectionId String
+  section   Section @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  isCompleted Boolean @default(false)
+  watchTime   Int     @default(0) // in seconds
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now())
+
+  @@index([sectionId])
+  @@index([studentId])
+  @@unique([studentId, sectionId])
+}
+
+// Enrollment model
+model Enrollment {
+  id         String   @id @default(uuid())
+  studentId  String
+  student    User     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  courseId   String
+  course     Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  
+  progress   Int      @default(0) // percentage
+  isCompleted Boolean @default(false)
+  enrolledAt DateTime @default(now())
+  
+  @@index([studentId])
+  @@index([courseId])
+  @@unique([studentId, courseId])
+}
+
+// Quiz model
+model Quiz {
+  id          String  @id @default(uuid())
+  title       String
+  description String?
+  timeLimit   Int? // in minutes
+  passingScore Int @default(70)
+  
+  sectionId String?
+  section   Section? @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  
+  courseId String
+  
+  questions QuizQuestion[]
+  attempts  QuizAttempt[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now())
+  
+  @@index([sectionId])
+}
+
+model QuizQuestion {
+  id       String @id @default(uuid())
+  question String
+  options  String // JSON array
+  correctAnswer String
+  points   Int @default(1)
+  
+  quizId String
+  quiz   Quiz @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  
+  @@index([quizId])
+}
+
+model QuizAttempt {
+  id        String @id @default(uuid())
+  studentId String
+  student   User   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  
+  quizId String
+  quiz   Quiz @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  
+  score     Float
+  answers   String // JSON object
+  isPassed  Boolean @default(false)
+  
+  createdAt DateTime @default(now())
+  
+  @@index([studentId])
+  @@index([quizId])
+}
+
+// Assignment model
+model Assignment {
+  id          String   @id @default(uuid())
+  title       String
+  description String
+  dueDate     DateTime?
+  maxScore    Int      @default(100)
+  
+  courseId String
+  
+  submissions AssignmentSubmission[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now())
+}
+
+model AssignmentSubmission {
+  id           String @id @default(uuid())
+  studentId    String
+  student      User   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  
+  assignmentId String
+  assignment   Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  
+  fileUrl      String?
+  content      String?
+  score        Float?
+  feedback     String?
+  isGraded     Boolean @default(false)
+  
+  submittedAt DateTime @default(now())
+  gradedAt    DateTime?
+  
+  @@index([studentId])
+  @@index([assignmentId])
+}
+
+// Discussion and Q&A with enhanced features
+model Discussion {
+  id        String @id @default(uuid())
+  title     String
+  content   String
+  category  String @default("COURSE") // COURSE, DEPARTMENT, GENERAL
+  
+  authorId  String
+  author    User @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  
+  courseId     String?
+  course       Course? @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  
+  departmentId String?
+  department   Department? @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  
+  isResolved   Boolean @default(false)
+  isPinned     Boolean @default(false)
+  views        Int @default(0)
+  
+  comments   Comment[]
+  votes      Vote[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now())
+  
+  @@index([authorId])
+  @@index([courseId])
+  @@index([departmentId])
+  @@index([category])
+}
+
+model Comment {
+  id           String @id @default(uuid())
+  content      String
+  
+  authorId     String
+  author       User @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  
+  discussionId String
+  discussion   Discussion @relation(fields: [discussionId], references: [id], onDelete: Cascade)
+  
+  parentCommentId String?
+  parentComment   Comment?  @relation("CommentReplies", fields: [parentCommentId], references: [id])
+  replies         Comment[] @relation("CommentReplies")
+  
+  isBestAnswer Boolean @default(false)
+  upvotes      Int @default(0)
+  downvotes    Int @default(0)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now())
+  
+  @@index([authorId])
+  @@index([discussionId])
+  @@index([parentCommentId])
+}
+
+model Vote {
+  id           String @id @default(uuid())
+  value        Int // 1 for upvote, -1 for downvote
+  
+  userId       String
+  user         User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  discussionId String
+  discussion   Discussion @relation(fields: [discussionId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+  
+  @@index([userId])
+  @@index([discussionId])
+  @@unique([userId, discussionId])
+}
+
+// Certificate model
+model Certificate {
+  id          String @id @default(uuid())
+  studentId   String
+  student     User @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  
+  courseId    String
+  courseName  String
+  issuedDate  DateTime @default(now())
+  certificateUrl String?
+  
+  @@index([studentId])
+}
+
+// Course Analytics
+model CourseAnalytics {
+  id              String @id @default(uuid())
+  courseId        String @unique
+  course          Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  
+  totalEnrollments Int @default(0)
+  completionRate   Float @default(0)
+  averageRating    Float @default(0)
+  totalRevenue     Float @default(0)
+  averageQuizScore Float @default(0)
+  totalDiscussions Int @default(0)
+  averageTimeSpent Float @default(0) // in hours
+  
+  updatedAt DateTime @default(now())
+  
+  @@index([courseId])
+}
+
+// Course Rating model
+model CourseRating {
+  id        String @id @default(uuid())
+  rating    Int // 1-5 stars
+  review    String?
+  
+  studentId String
+  student   User @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  
+  courseId  String
+  course    Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now())
+  
+  @@unique([studentId, courseId])
+  @@index([courseId])
+  @@index([studentId])
+}
+
+model Purchase {
+  id         String @id @default(uuid())
+  customerId String 
+
+  courseId String
+  course   Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now())
+
+  @@index([courseId])
+  @@unique([customerId, courseId])
+}
+
+model StripeCustomer {
+  id               String @id @default(uuid())
+  customerId       String @unique
+  stripeCustomerId String @unique
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now())
+}
+
+// Shared Materials uploaded by educators
+model SharedMaterial {
+  id          String   @id @default(uuid())
+  educatorId  String
+  educator    User     @relation("EducatorMaterials", fields: [educatorId], references: [id], onDelete: Cascade)
+  
+  title       String
+  description String?
+  fileUrl     String
+  fileName    String
+  fileType    String   // PDF, PPTX, DOCX, VIDEO, etc.
+  fileSize    Int?     // Size in bytes
+  
+  category    String?  // Lecture Notes, Research Paper, Tutorial, etc.
+  tags        String?  // JSON array of tags
+  
+  downloads   Int      @default(0)
+  isPublic    Boolean  @default(true)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now())
+  
+  @@index([educatorId])
+  @@index([category])
+}
