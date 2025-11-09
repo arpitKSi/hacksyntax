@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import EnhancedCourseCard from "@/components/courses/EnhancedCourseCard";
 import EducatorContentUpload from "@/components/educators/EducatorContentUpload";
-import { auth } from "@/shims/clerk-server";
+import { getServerUser } from "@/lib/server-auth";
 
 interface EducatorProfilePageProps {
   params: {
@@ -15,8 +15,10 @@ interface EducatorProfilePageProps {
 }
 
 export default async function EducatorProfilePage({ params }: EducatorProfilePageProps) {
-  const { userId } = auth();
-  
+  const authUser = await getServerUser();
+  const canManageMaterials =
+    !!authUser && (authUser.id === params.educatorId || authUser.role === "ADMIN");
+
   // Fetch educator details
   const educator = await db.user.findUnique({
     where: {
@@ -63,9 +65,13 @@ export default async function EducatorProfilePage({ params }: EducatorProfilePag
         take: 10,
       },
       sharedMaterials: {
-        where: {
-          isPublic: true,
-        },
+        ...(canManageMaterials
+          ? {}
+          : {
+              where: {
+                isPublic: true,
+              },
+            }),
         orderBy: {
           createdAt: "desc",
         },
@@ -76,13 +82,7 @@ export default async function EducatorProfilePage({ params }: EducatorProfilePag
   if (!educator) {
     return notFound();
   }
-
-  // Check if current user can edit
-  const currentUser = userId
-    ? await db.user.findUnique({ where: { clerkId: userId } })
-    : null;
-  const canEdit =
-    currentUser && (currentUser.id === educator.id || currentUser.role === "ADMIN");
+  const canEdit = canManageMaterials;
 
   const researchInterests = educator.researchInterests
     ? JSON.parse(educator.researchInterests)

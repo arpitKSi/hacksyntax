@@ -1,46 +1,56 @@
 import { db } from "@/lib/db";
-import { auth } from "@/shims/clerk-server";
-import { NextRequest, NextResponse } from "next/server";
+import {
+  asyncHandler,
+  successResponse,
+  NotFoundError,
+  ForbiddenError,
+  BadRequestError,
+} from "@/lib/errors";
+import { requireEducator, parseBody } from "@/lib/api-middleware";
+import { createSectionSchema } from "@/lib/validations";
 
-export const POST = async (
-  req: NextRequest,
-  { params }: { params: { courseId: string } }
-) => {
-  try {
-    const { userId } = auth();
+/**
+ * POST /api/courses/[courseId]/sections
+ * Create a new section in a course
+ */
+export const POST = asyncHandler(async (req: Request, { params }: { params: { courseId: string } }) => {
+  const user = await requireEducator(req);
+  const { courseId } = params;
 
-    if (!userId) {
-      return new NextResponse("Unauthorized", { status: 401 });
-    }
+  // Check course exists and ownership
+  const course = await db.course.findUnique({
+    where: { id: courseId },
+  });
 
-    const course = await db.course.findUnique({
-      where: { id: params.courseId, instructorId: userId },
-    });
-
-    if (!course) {
-      return new NextResponse("Course Not Found", { status: 404 });
-    }
-
-    const lastSection = await db.section.findFirst({
-      where: { courseId: params.courseId },
-      orderBy: { position: "desc" },
-    });
-
-    const newPosition = lastSection ? lastSection.position + 1 : 0;
-
-    const { title } = await req.json();
-
-    const newSection = await db.section.create({
-      data: {
-        title,
-        courseId: params.courseId,
-        position: newPosition,
-      },
-    });
-
-    return NextResponse.json(newSection, { status: 200 });
-  } catch (err) {
-    console.log("[sections_POST]", err);
-    return new NextResponse("Internal Server Error", { status: 500 });
+  if (!course) {
+    throw new NotFoundError("Course not found");
   }
-};
+
+  // Check ownership (allow admins to edit any course)
+  if (user.role !== "ADMIN" && course.instructorId !== user.id) {
+    throw new ForbiddenError("You don't have permission to add sections to this course");
+  }
+
+  const body = await parseBody(req);
+  const validatedData = createSectionSchema.parse(body);
+
+  // Get last section position
+  const lastSection = await db.section.findFirst({
+    where: { courseId },
+    orderBy: { position: "desc" },
+  });
+
+  const newPosition = lastSection ? lastSection.position + 1 : 0;
+
+  const newSection = await db.section.create({
+    data: {
+      title: validatedData.title,
+      description: validatedData.description,
+      videoUrl: validatedData.videoUrl,
+      courseId,
+      position: newPosition,
+    },
+  });
+
+  return successResponse({ section: newSection }, 201);
+});

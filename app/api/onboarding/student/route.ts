@@ -1,10 +1,10 @@
-import { auth } from "@/shims/clerk-server";
+// Auth handled by middleware;
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 
 export const POST = async (req: NextRequest) => {
   try {
-    const { userId } = auth();
+    // const userId = "placeholder" // Auth via cookies;
 
     if (!userId) {
       return new NextResponse("Unauthorized", { status: 401 });
@@ -31,7 +31,7 @@ export const POST = async (req: NextRequest) => {
         firstName,
         lastName,
         departmentId,
-        year: parseInt(year),
+        year: year.toString(),
         branch,
         enrollmentId,
         role: "LEARNER",

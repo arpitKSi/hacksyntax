@@ -3,7 +3,7 @@
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
-import axios from "axios";
+import apiClient, { extractApiData } from "@/lib/api-client";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -59,12 +59,14 @@ const CreateCourseForm = ({ categories }: CreateCourseFormProps) => {
   // 2. Define a submit handler.
   const onSubmit = async (values: z.infer<typeof formSchema>) => {
     try {
-      const response = await axios.post("/api/courses", values);
-      router.push(`/instructor/courses/${response.data.id}/basic`);
+  const response = await apiClient.post("/courses", values);
+  const course = extractApiData(response.data) as { id: string };
+  router.push(`/instructor/courses/${course.id}/basic`);
       toast.success("New Course Created");
-    } catch (err) {
+    } catch (err: any) {
       console.log("Failed to create new course", err);
-      toast.error("Something went wrong!");
+      const message = err.response?.data?.message || "Something went wrong!";
+      toast.error(message);
     }
   };
 

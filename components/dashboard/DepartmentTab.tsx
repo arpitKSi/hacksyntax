@@ -22,9 +22,8 @@ interface DepartmentTabProps {
     name: string
     code: string
     description: string | null
-    headId: string | null
-    contactEmail: string | null
-    head: {
+    headOfDepartmentId: string | null
+    headOfDepartment: {
       id: string
       firstName: string | null
       lastName: string | null
@@ -53,39 +52,31 @@ export default function DepartmentTab({ department, educators }: DepartmentTabPr
               <p className="text-gray-700 dark:text-gray-300 mt-3">{department.description}</p>
             )}
           </div>
-          {department.contactEmail && (
-            <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-              <Mail className="w-4 h-4" />
-              <a href={`mailto:${department.contactEmail}`} className="hover:text-blue-600">
-                {department.contactEmail}
-              </a>
-            </div>
-          )}
         </div>
       </Card>
 
       {/* Department Head */}
-      {department.head && (
+      {department.headOfDepartment && (
         <Card className="p-6">
           <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
             <Users className="w-5 h-5 text-purple-600" />
             Department Head
           </h3>
           <Link
-            href={`/educators/${department.head.id}`}
+            href={`/educators/${department.headOfDepartment.id}`}
             className="flex items-center gap-4 p-4 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors border"
           >
             <div className="relative w-16 h-16 rounded-full overflow-hidden flex-shrink-0">
               <Image
-                src={department.head.imageUrl || "/avatar_placeholder.jpg"}
-                alt={`${department.head.firstName} ${department.head.lastName}`}
+                src={department.headOfDepartment.imageUrl || "/avatar_placeholder.jpg"}
+                alt={`${department.headOfDepartment.firstName} ${department.headOfDepartment.lastName}`}
                 fill
                 className="object-cover"
               />
             </div>
             <div>
               <p className="font-semibold text-lg">
-                {department.head.designation} {department.head.firstName} {department.head.lastName}
+                {department.headOfDepartment.designation} {department.headOfDepartment.firstName} {department.headOfDepartment.lastName}
               </p>
               <p className="text-sm text-gray-500">Head of {department.name}</p>
             </div>

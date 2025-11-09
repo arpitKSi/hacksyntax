@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import axios from "axios";
+import apiClient from "@/lib/api-client";
 import { Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -26,7 +26,7 @@ const PublishButton = ({
   const [isLoading, setIsLoading] = useState(false);
 
   const onClick = async () => {
-    let url = `/api/courses/${courseId}`;
+    let url = `/courses/${courseId}`;
     if (page === "Section") {
       url += `/sections/${sectionId}`;
     }
@@ -34,8 +34,8 @@ const PublishButton = ({
     try {
       setIsLoading(true);
       isPublished
-        ? await axios.post(`${url}/unpublish`)
-        : await axios.post(`${url}/publish`);
+        ? await apiClient.post(`${url}/unpublish`)
+        : await apiClient.post(`${url}/publish`);
 
       toast.success(`${page} ${isPublished ? "unpublished" : "published"}`);
       router.refresh();

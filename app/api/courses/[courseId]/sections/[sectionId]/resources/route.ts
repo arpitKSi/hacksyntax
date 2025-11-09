@@ -1,55 +1,54 @@
 import { db } from "@/lib/db";
-import { auth } from "@/shims/clerk-server";
-import { NextRequest, NextResponse } from "next/server";
+import {
+  asyncHandler,
+  successResponse,
+  NotFoundError,
+  ForbiddenError,
+} from "@/lib/errors";
+import { requireEducator, parseBody } from "@/lib/api-middleware";
+import { createSectionResourceSchema } from "@/lib/validations";
 
-export const POST = async (
-  req: NextRequest,
-  { params }: { params: { courseId: string; sectionId: string } }
+type RouteParams = { courseId: string; sectionId: string };
+
+export const POST = asyncHandler(async (
+  req: Request,
+  { params }: { params: RouteParams }
 ) => {
-  try {
-    const { userId } = auth()
+  const user = await requireEducator(req);
+  const { courseId, sectionId } = params;
 
-    if (!userId) {
-      return new NextResponse("Unauthorized", { status: 401 });
-    }
+  const course = await db.course.findUnique({
+    where: { id: courseId },
+    select: { instructorId: true },
+  });
 
-    const { courseId, sectionId } = params;
-
-    const course = await db.course.findUnique({
-      where: {
-        id: courseId,
-        instructorId: userId,
-      },
-    });
-
-    if (!course) {
-      return new NextResponse("Course Not Found", { status: 404 });
-    }
-
-    const section = await db.section.findUnique({
-      where: {
-        id: sectionId,
-        courseId,
-      },
-    });
-
-    if (!section) {
-      return new NextResponse("Section Not Found", { status: 404 });
-    }
-
-    const { name, fileUrl } = await req.json();
-
-    const resource = await db.resource.create({
-      data: {
-        name,
-        fileUrl,
-        sectionId,
-      },
-    });
-
-    return NextResponse.json(resource, { status: 200 });
-  } catch (err) {
-    console.log("[resources_POST", err);
-    return new NextResponse("Internal Server Error", { status: 500 });
+  if (!course) {
+    throw new NotFoundError("Course not found");
   }
-};
+
+  if (user.role !== "ADMIN" && course.instructorId !== user.id) {
+    throw new ForbiddenError("You don't have permission to add resources to this course");
+  }
+
+  const section = await db.section.findUnique({
+    where: { id: sectionId, courseId },
+    select: { id: true },
+  });
+
+  if (!section) {
+    throw new NotFoundError("Section not found");
+  }
+
+  const body = await parseBody(req);
+  const data = createSectionResourceSchema.parse(body);
+
+  const resource = await db.resource.create({
+    data: {
+      name: data.name,
+      fileUrl: data.fileUrl,
+      sectionId,
+    },
+  });
+
+  return successResponse({ resource }, 201);
+});

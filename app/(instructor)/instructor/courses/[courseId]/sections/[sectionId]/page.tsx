@@ -1,7 +1,7 @@
 import AlertBanner from "@/components/custom/AlertBanner";
 import EditSectionForm from "@/components/sections/EditSectionForm";
 import { db } from "@/lib/db";
-import { auth } from "@/shims/clerk-server";
+import { requireServerAuth } from "@/lib/server-auth";
 import { redirect } from "next/navigation";
 
 const SectionDetailsPage = async ({
@@ -9,17 +9,24 @@ const SectionDetailsPage = async ({
 }: {
   params: { courseId: string; sectionId: string };
 }) => {
-  const { userId } = auth();
+  const authUser = await requireServerAuth().catch(() => null);
 
-  if (!userId) {
+  if (!authUser) {
     return redirect("/sign-in");
   }
 
+  if (!["EDUCATOR", "ADMIN"].includes(authUser.role)) {
+    return redirect("/dashboard");
+  }
+
   const course = await db.course.findUnique({
-    where: {
-      id: params.courseId,
-      instructorId: userId,
-    },
+    where:
+      authUser.role === "ADMIN"
+        ? { id: params.courseId }
+        : {
+            id: params.courseId,
+            instructorId: authUser.id,
+          },
   });
 
   if (!course) {

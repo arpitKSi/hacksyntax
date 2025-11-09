@@ -21,6 +21,8 @@ import {
   ArrowRight,
 } from "lucide-react"
 import { toast } from "react-hot-toast"
+import axios from "axios"
+import { authHelpers, extractApiData } from "@/lib/api-client"
 
 export default function SignInPage() {
   const router = useRouter()
@@ -38,26 +40,44 @@ export default function SignInPage() {
     setIsLoading(true)
 
     try {
-      // Simulate login - Replace with actual authentication
-      await new Promise((resolve) => setTimeout(resolve, 1500))
+      // Call actual login API
+      const response = await axios.post("/api/auth/signin", {
+        email: formData.email,
+        password: formData.password,
+      })
 
-      // Mark user as signed in (for demo purposes)
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem('demo_signed_out')
+      // Store tokens and user data
+      const payload = extractApiData(response.data) as {
+        accessToken?: string
+        refreshToken?: string
+        user?: any
       }
 
-      toast.success(`Signed in as ${activeRole}!`)
+      const { accessToken, refreshToken, user } = payload
+
+      if (!accessToken || !refreshToken || !user) {
+        throw new Error("Invalid authentication response")
+      }
+      authHelpers.setTokens(accessToken, refreshToken)
+      authHelpers.setUser(user)
+
+      toast.success(`Welcome back, ${user.firstName}!`)
       
       // Redirect based on role
-      if (activeRole === "student") {
-        router.push("/dashboard")
-      } else if (activeRole === "educator") {
+      if (user.role === "STUDENT" || user.role === "LEARNER") {
+        router.push("/learning")
+      } else if (user.role === "EDUCATOR") {
         router.push("/instructor/courses")
-      } else {
-        router.push("/admin/dashboard")
+      } else if (user.role === "ADMIN") {
+        router.push("/")
       }
-    } catch (error) {
-      toast.error("Failed to sign in. Please try again.")
+      
+      // Force refresh to update auth state
+      router.refresh()
+    } catch (error: any) {
+      console.error("Login error:", error)
+      const message = error.response?.data?.message || "Invalid email or password"
+      toast.error(message)
     } finally {
       setIsLoading(false)
     }
@@ -263,13 +283,23 @@ export default function SignInPage() {
           </div>
 
           {/* Demo Credentials */}
-          <div className="mt-6 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-            <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">
-              Demo Credentials:
+          <div className="mt-6 p-4 bg-gradient-to-r from-blue-50 to-purple-50 dark:from-gray-800 dark:to-gray-700 rounded-lg border border-blue-200 dark:border-gray-600">
+            <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2">
+              <span className="text-lg">🔐</span> Test Accounts (Password: demo123)
             </p>
-            <div className="space-y-1 text-xs text-gray-600 dark:text-gray-400">
-              <p>📧 Email: demo@college.edu</p>
-              <p>🔑 Password: demo123</p>
+            <div className="space-y-2 text-xs">
+              <div className="flex items-center justify-between p-2 bg-white dark:bg-gray-800 rounded">
+                <span className="text-gray-600 dark:text-gray-400">👑 Admin:</span>
+                <span className="font-mono text-gray-800 dark:text-gray-200">admin@college.edu</span>
+              </div>
+              <div className="flex items-center justify-between p-2 bg-white dark:bg-gray-800 rounded">
+                <span className="text-gray-600 dark:text-gray-400">👨‍🏫 Educator:</span>
+                <span className="font-mono text-gray-800 dark:text-gray-200">educator@college.edu</span>
+              </div>
+              <div className="flex items-center justify-between p-2 bg-white dark:bg-gray-800 rounded">
+                <span className="text-gray-600 dark:text-gray-400">👨‍🎓 Student:</span>
+                <span className="font-mono text-gray-800 dark:text-gray-200">student@college.edu</span>
+              </div>
             </div>
           </div>
         </Card>

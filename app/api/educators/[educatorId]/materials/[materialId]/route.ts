@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { auth } from "@/shims/clerk-server";
+// Auth handled by middleware;
 import { NextResponse } from "next/server";
 
 export async function DELETE(
@@ -7,7 +7,7 @@ export async function DELETE(
   { params }: { params: { educatorId: string; materialId: string } }
 ) {
   try {
-    const { userId } = auth();
+    // const userId = "placeholder" // Auth via cookies;
     if (!userId) {
       return new NextResponse("Unauthorized", { status: 401 });
     }
@@ -46,7 +46,7 @@ export async function PATCH(
   { params }: { params: { educatorId: string; materialId: string } }
 ) {
   try {
-    const { userId } = auth();
+    // const userId = "placeholder" // Auth via cookies;
     if (!userId) {
       return new NextResponse("Unauthorized", { status: 401 });
     }

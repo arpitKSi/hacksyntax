@@ -34,8 +34,9 @@ model Department {
 // User model with enhanced college fields
 model User {
   id            String   @id @default(uuid())
-  clerkId       String   @unique
+  clerkId       String?  @unique
   email         String   @unique
+  password      String?  // Hashed password (optional for Clerk integration)
   firstName     String?
   lastName      String?
   imageUrl      String?

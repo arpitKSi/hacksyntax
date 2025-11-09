@@ -9,7 +9,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import axios from "axios";
+import apiClient from "@/lib/api-client";
 import { Loader2, Trash } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -31,9 +31,9 @@ const Delete = ({ item, courseId, sectionId }: DeleteProps) => {
       setIsDeleting(true);
       const url =
         item === "course"
-          ? `/api/courses/${courseId}`
-          : `/api/courses/${courseId}/sections/${sectionId}`;
-      await axios.delete(url);
+          ? `/courses/${courseId}`
+          : `/courses/${courseId}/sections/${sectionId}`;
+      await apiClient.delete(url);
 
       setIsDeleting(false);
       const pushedUrl =

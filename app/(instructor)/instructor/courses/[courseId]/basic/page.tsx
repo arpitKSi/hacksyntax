@@ -1,21 +1,28 @@
 import EditCourseForm from "@/components/courses/EditCourseForm";
 import AlertBanner from "@/components/custom/AlertBanner";
 import { db } from "@/lib/db";
-import { auth } from "@/shims/clerk-server";
+import { requireServerAuth } from "@/lib/server-auth";
 import { redirect } from "next/navigation";
 
 const CourseBasics = async ({ params }: { params: { courseId: string } }) => {
-  const { userId } = auth();
+  const authUser = await requireServerAuth().catch(() => null);
 
-  if (!userId) {
+  if (!authUser) {
     return redirect("/sign-in");
   }
 
+  if (!["EDUCATOR", "ADMIN"].includes(authUser.role)) {
+    return redirect("/dashboard");
+  }
+
   const course = await db.course.findUnique({
-    where: {
-      id: params.courseId,
-      instructorId: userId,
-    },
+    where:
+      authUser.role === "ADMIN"
+        ? { id: params.courseId }
+        : {
+            id: params.courseId,
+            instructorId: authUser.id,
+          },
     include: {
       sections: true,
     },
@@ -36,20 +43,19 @@ const CourseBasics = async ({ params }: { params: { courseId: string } }) => {
 
   const levels = await db.level.findMany();
 
-  const requiredFields = [
-    course.title,
-    course.description,
-    course.categoryId,
-    course.subCategoryId,
-    course.levelId,
-    course.imageUrl,
-    course.price,
+  const completionChecks = [
+    Boolean(course.title?.trim()),
+    Boolean(course.description?.trim()),
+    Boolean(course.categoryId),
+    Boolean(course.subCategoryId),
+    Boolean(course.levelId),
+    Boolean(course.imageUrl),
     course.sections.some((section) => section.isPublished),
   ];
-  const requiredFieldsCount = requiredFields.length;
-  const missingFields = requiredFields.filter((field) => !Boolean(field));
-  const missingFieldsCount = missingFields.length;
-  const isCompleted = requiredFields.every(Boolean);
+
+  const requiredFieldsCount = completionChecks.length;
+  const missingFieldsCount = completionChecks.filter((isComplete) => !isComplete).length;
+  const isCompleted = missingFieldsCount === 0;
 
   return (
     <div className="px-10">

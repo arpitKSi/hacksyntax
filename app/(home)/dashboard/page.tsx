@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { auth } from "@/shims/clerk-server";
+import { requireServerAuth } from "@/lib/server-auth";
 import { redirect } from "next/navigation";
 import { BookOpen, Award, TrendingUp, Clock, BookMarked, FileText, Target } from "lucide-react";
 import Link from "next/link";
@@ -12,15 +12,15 @@ import AssignmentsDueWidget from "@/components/dashboard/AssignmentsDueWidget";
 import RecentDiscussions from "@/components/dashboard/RecentDiscussions";
 
 export default async function LearnerDashboard() {
-  const { userId } = auth();
-  
-  if (!userId) {
+  const authUser = await requireServerAuth().catch(() => null);
+
+  if (!authUser) {
     redirect("/sign-in");
   }
 
   // Get user with enrollments
   const user = await db.user.findUnique({
-    where: { clerkId: userId },
+    where: { id: authUser.id },
     include: {
       department: {
         include: {

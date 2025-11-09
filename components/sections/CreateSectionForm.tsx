@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import toast from "react-hot-toast";
-import axios from "axios";
+import apiClient, { extractApiData } from "@/lib/api-client";
 import SectionList from "@/components/sections/SectionList";
 import { Loader2 } from "lucide-react";
 
@@ -38,10 +38,13 @@ const CreateSectionForm = ({
 
   const routes = [
     {
-      label: "Basic Information",
+      label: "Course Basics",
       path: `/instructor/courses/${course.id}/basic`,
     },
-    { label: "Curriculum", path: `/instructor/courses/${course.id}/sections` },
+    {
+      label: "Upload Content",
+      path: `/instructor/courses/${course.id}/sections`,
+    },
   ];
 
   // 1. Define your form.
@@ -57,12 +60,16 @@ const CreateSectionForm = ({
   // 2. Define a submit handler.
   const onSubmit = async (values: z.infer<typeof formSchema>) => {
     try {
-      const response = await axios.post(
-        `/api/courses/${course.id}/sections`,
+      const response = await apiClient.post(
+        `/courses/${course.id}/sections`,
         values
       );
+      const payload = extractApiData(response.data) as { section?: Section } | Section;
+      const newSection =
+        (payload as { section?: Section }).section ?? (payload as Section);
+
       router.push(
-        `/instructor/courses/${course.id}/sections/${response.data.id}`
+        `/instructor/courses/${course.id}/sections/${newSection.id}`
       );
       toast.success("New Section created!");
     } catch (err) {
@@ -73,8 +80,8 @@ const CreateSectionForm = ({
 
   const onReorder = async (updateData: { id: string; position: number }[]) => {
     try {
-      await axios.put(`/api/courses/${course.id}/sections/reorder`, {
-        list: updateData,
+      await apiClient.put(`/courses/${course.id}/sections/reorder`, {
+        sections: updateData,
       });
       toast.success("Sections reordered successfully");
     } catch (err) {

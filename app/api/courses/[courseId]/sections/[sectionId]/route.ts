@@ -1,166 +1,227 @@
 import { db } from "@/lib/db";
-import { auth } from "@/shims/clerk-server";
-import { NextRequest, NextResponse } from "next/server";
 import Mux from "@mux/mux-node";
+import { z } from "zod";
+import {
+  asyncHandler,
+  successResponse,
+  NotFoundError,
+  ForbiddenError,
+} from "@/lib/errors";
+import { optionalAuth, requireEducator, parseBody } from "@/lib/api-middleware";
 
-const { video } = new Mux({
-  tokenId: process.env.MUX_TOKEN_ID,
-  tokenSecret: process.env.MUX_TOKEN_SECRET,
+const updateSectionSchema = z.object({
+  title: z.string().min(1).optional(),
+  description: z.string().optional(),
+  videoUrl: z
+    .string()
+    .trim()
+    .url()
+    .or(z.literal(""))
+    .nullable()
+    .optional(),
+  isFree: z.boolean().optional(),
+  isPublished: z.boolean().optional(),
 });
 
-export const POST = async (
-  req: NextRequest,
-  { params }: { params: { courseId: string; sectionId: string } }
-) => {
-  try {
-    const { userId } = auth();
+const muxClient =
+  process.env.MUX_TOKEN_ID && process.env.MUX_TOKEN_SECRET
+    ? new Mux({
+        tokenId: process.env.MUX_TOKEN_ID,
+        tokenSecret: process.env.MUX_TOKEN_SECRET,
+      })
+    : null;
 
-    if (!userId) {
-      return new NextResponse("Unauthorized", { status: 401 });
-    }
+const muxVideo = muxClient?.video;
 
-    const values = await req.json();
+type RouteParams = { params: { courseId: string; sectionId: string } };
 
-    const { courseId, sectionId } = params;
+export const GET = asyncHandler(async (req: Request, { params }: RouteParams) => {
+  const user = await optionalAuth(req);
+  const { courseId, sectionId } = params;
 
-    const course = await db.course.findUnique({
-      where: {
-        id: courseId,
-        instructorId: userId,
-      },
-    });
-
-    if (!course) {
-      return new NextResponse("Course Not Found", { status: 404 });
-    }
-
-    const section = await db.section.update({
-      where: {
-        id: sectionId,
-        courseId,
-      },
-      data: {
-        ...values,
-      },
-    });
-
-    if (values.videoUrl) {
-      const existingMuxData = await db.muxData.findFirst({
-        where: {
-          sectionId,
+  const section = await db.section.findUnique({
+    where: { id: sectionId, courseId },
+    include: {
+      resources: true,
+      muxData: true,
+      course: {
+        select: {
+          id: true,
+          title: true,
+          instructorId: true,
+          isPublished: true,
         },
-      });
+      },
+    },
+  });
 
-      if (existingMuxData) {
-        await video.assets.delete(existingMuxData.assetId);
-        await db.muxData.delete({
-          where: {
-            id: existingMuxData.id,
+  if (!section) {
+    throw new NotFoundError("Section not found");
+  }
+
+  const isOwner =
+    !!user && (user.role === "ADMIN" || user.id === section.course.instructorId);
+
+  if (!section.isPublished && !isOwner) {
+    throw new ForbiddenError("This section is not published");
+  }
+
+  if (
+    user &&
+    (user.role === "LEARNER" || user.role === "STUDENT") &&
+    !section.isFree &&
+    !isOwner
+  ) {
+    const enrollment = await db.enrollment.findUnique({
+      where: {
+        studentId_courseId: {
+          studentId: user.id,
+          courseId,
+        },
+      },
+    });
+
+    if (!enrollment) {
+      throw new ForbiddenError("You must enroll in the course to access this section");
+    }
+  }
+
+  const { course, ...sectionData } = section;
+
+  return successResponse({
+    section: sectionData,
+    course,
+  });
+});
+
+export const PATCH = asyncHandler(async (req: Request, { params }: RouteParams) => {
+  const user = await requireEducator(req);
+  const { courseId, sectionId } = params;
+
+  const course = await db.course.findUnique({
+    where: { id: courseId },
+    select: { instructorId: true },
+  });
+
+  if (!course) {
+    throw new NotFoundError("Course not found");
+  }
+
+  if (user.role !== "ADMIN" && course.instructorId !== user.id) {
+    throw new ForbiddenError("You don't have permission to edit this section");
+  }
+
+  const existingSection = await db.section.findUnique({
+    where: { id: sectionId, courseId },
+    include: {
+      muxData: true,
+    },
+  });
+
+  if (!existingSection) {
+    throw new NotFoundError("Section not found");
+  }
+
+  const body = await parseBody(req);
+  const data = updateSectionSchema.parse(body);
+
+  const updateData: Record<string, unknown> = {};
+
+  if (data.title !== undefined) updateData.title = data.title;
+  if (data.description !== undefined) updateData.description = data.description;
+  if (data.isFree !== undefined) updateData.isFree = data.isFree;
+  if (data.isPublished !== undefined) updateData.isPublished = data.isPublished;
+
+  if (data.videoUrl !== undefined) {
+    const normalizedUrl = data.videoUrl ? data.videoUrl : null;
+    updateData.videoUrl = normalizedUrl;
+
+    if (existingSection.muxData && muxVideo && existingSection.muxData.assetId) {
+      try {
+        await muxVideo.assets.delete(existingSection.muxData.assetId);
+      } catch (error) {
+        console.error("Failed to delete Mux asset:", error);
+      }
+    }
+
+    if (normalizedUrl && muxVideo) {
+      try {
+        const asset = await muxVideo.assets.create({
+          input: [{ url: normalizedUrl }],
+          playback_policy: ["public"],
+          test: process.env.NODE_ENV !== "production",
+        });
+
+        await db.muxData.upsert({
+          where: { sectionId },
+          update: {
+            assetId: asset.id,
+            playbackId: asset.playback_ids?.[0]?.id ?? null,
+          },
+          create: {
+            sectionId,
+            assetId: asset.id,
+            playbackId: asset.playback_ids?.[0]?.id ?? null,
           },
         });
+      } catch (error) {
+        console.error("Failed to create Mux asset:", error);
       }
-
-      const asset = await video.assets.create({
-        input: values.videoUrl,
-        playback_policy: ["public"],
-        test: false,
-      });
-
-      await db.muxData.create({
-        data: {
-          assetId: asset.id,
-          playbackId: asset.playback_ids?.[0]?.id,
-          sectionId,
-        },
-      });
+    } else if (!normalizedUrl && existingSection.muxData) {
+      await db.muxData
+        .delete({ where: { sectionId } })
+        .catch(() => undefined);
     }
-
-    return NextResponse.json(section, { status: 200 });
-  } catch (err) {
-    console.log("[sectionId_POST]", err);
-    return new NextResponse("Internal Server Error", { status: 500 });
   }
-};
 
-export const DELETE = async (req: NextRequest,
-  { params }: { params: { courseId: string; sectionId: string } }
-) => {
-  try {
-    const { userId } = auth();
+  const updatedSection = await db.section.update({
+    where: { id: sectionId, courseId },
+    data: updateData,
+    include: {
+      resources: true,
+      muxData: true,
+    },
+  });
 
-    if (!userId) {
-      return new NextResponse("Unauthorized", { status: 401 });
-    }
+  return successResponse({ section: updatedSection });
+});
 
-    const { courseId, sectionId } = params;
+export const DELETE = asyncHandler(async (req: Request, { params }: RouteParams) => {
+  const user = await requireEducator(req);
+  const { courseId, sectionId } = params;
 
-    const course = await db.course.findUnique({
-      where: {
-        id: courseId,
-        instructorId: userId,
-      },
-    });
+  const course = await db.course.findUnique({
+    where: { id: courseId },
+    select: { instructorId: true },
+  });
 
-    if (!course) {
-      return new NextResponse("Course Not Found", { status: 404 });
-    }
-
-    const section = await db.section.findUnique({
-      where: {
-        id: sectionId,
-        courseId,
-      }
-    });
-
-    if (!section) {
-      return new NextResponse("Section Not Found", { status: 404 });
-    }
-
-    if (section.videoUrl) {
-      const existingMuxData = await db.muxData.findFirst({
-        where: {
-          sectionId,
-        },
-      });
-
-      if (existingMuxData) {
-        await video.assets.delete(existingMuxData.assetId);
-        await db.muxData.delete({
-          where: {
-            id: existingMuxData.id,
-          },
-        });
-      }
-    }
-
-    await db.section.delete({
-      where: {
-        id: sectionId,
-        courseId,
-      },
-    });
-
-    const publishedSectionsInCourse = await db.section.findMany({
-      where: {
-        courseId,
-        isPublished: true,
-      },
-    });
-
-    if (!publishedSectionsInCourse.length) {
-      await db.course.update({
-        where: {
-          id: courseId,
-        },
-        data: {
-          isPublished: false,
-        },
-      });
-    }
-
-    return new NextResponse("Section Deleted", { status: 200 });
-  } catch (err) {
-    console.log("[sectionId_DELETE]", err);
-    return new NextResponse("Internal Server Error", { status: 500 });
+  if (!course) {
+    throw new NotFoundError("Course not found");
   }
-}
+
+  if (user.role !== "ADMIN" && course.instructorId !== user.id) {
+    throw new ForbiddenError("You don't have permission to delete this section");
+  }
+
+  const section = await db.section.findUnique({
+    where: { id: sectionId, courseId },
+    include: { muxData: true },
+  });
+
+  if (!section) {
+    throw new NotFoundError("Section not found");
+  }
+
+  if (section.muxData && muxVideo && section.muxData.assetId) {
+    try {
+      await muxVideo.assets.delete(section.muxData.assetId);
+    } catch (error) {
+      console.error("Failed to delete Mux asset:", error);
+    }
+  }
+
+  await db.muxData.deleteMany({ where: { sectionId } });
+  await db.section.delete({ where: { id: sectionId } });
+
+  return successResponse({ deleted: true });
+});

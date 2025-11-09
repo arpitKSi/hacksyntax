@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
+
 // Clerk is imported dynamically below only when a publishable key is present.
 
 import "./globals.css";
@@ -11,6 +12,23 @@ export const metadata: Metadata = {
   title: "VNIT E-Learning Platform",
   description: "Empowering minds, shaping future",
 };
+
+const themeInitializer = `(() => {
+  try {
+    const storedTheme = localStorage.getItem('theme');
+    const legacyFlag = localStorage.getItem('darkMode');
+    if (legacyFlag && !storedTheme) {
+      localStorage.setItem('theme', legacyFlag === 'true' ? 'dark' : 'light');
+      localStorage.removeItem('darkMode');
+    }
+    const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const finalTheme = localStorage.getItem('theme');
+    const enableDark = finalTheme ? finalTheme === 'dark' : prefersDark;
+    document.documentElement.classList.toggle('dark', enableDark);
+  } catch (error) {
+    console.warn('Theme initialization failed', error);
+  }
+})();`;
 
 export default async function RootLayout({
   children,
@@ -31,15 +49,19 @@ export default async function RootLayout({
     ClerkProvider = mod.ClerkProvider;
   }
 
+  const Provider = ClerkProvider;
+
   return (
-    // @ts-expect-error - dynamic provider type
-    <ClerkProvider>
-      <html lang="en">
-        <body className={inter.className}>
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInitializer }} />
+      </head>
+      <body className={inter.className}>
+        <Provider>
           <ToasterProvider />
           {children}
-        </body>
-      </html>
-    </ClerkProvider>
+        </Provider>
+      </body>
+    </html>
   );
 }

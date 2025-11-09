@@ -7,7 +7,7 @@ import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import toast from "react-hot-toast";
-import axios from "axios";
+import apiClient from "@/lib/api-client";
 import { File, Loader2, PlusCircle, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -53,8 +53,8 @@ const ResourceForm = ({ section, courseId }: ResourceFormProps) => {
   // 2. Define a submit handler.
   const onSubmit = async (values: z.infer<typeof formSchema>) => {
     try {
-      await axios.post(
-        `/api/courses/${courseId}/sections/${section.id}/resources`,
+      await apiClient.post(
+        `/courses/${courseId}/sections/${section.id}/resources`,
         values
       );
       toast.success("New Resource uploaded!");
@@ -68,8 +68,8 @@ const ResourceForm = ({ section, courseId }: ResourceFormProps) => {
 
   const onDelete = async (id: string) => {
     try {
-      await axios.post(
-        `/api/courses/${courseId}/sections/${section.id}/resources/${id}`
+      await apiClient.delete(
+        `/courses/${courseId}/sections/${section.id}/resources/${id}`
       );
       toast.success("Resource deleted!");
       router.refresh();

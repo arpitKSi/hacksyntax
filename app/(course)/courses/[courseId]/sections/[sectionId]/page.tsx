@@ -1,6 +1,6 @@
 import SectionsDetails from "@/components/sections/SectionsDetails";
 import { db } from "@/lib/db";
-import { auth } from "@/shims/clerk-server";
+import { getServerUser } from "@/lib/server-auth";
 import { Resource } from "@prisma/client";
 import { redirect } from "next/navigation";
 
@@ -10,46 +10,65 @@ const SectionDetailsPage = async ({
   params: { courseId: string; sectionId: string };
 }) => {
   const { courseId, sectionId } = params;
-  const { userId } = auth();
 
-  if (!userId) {
-    return redirect("/sign-in");
+  const user = await getServerUser();
+
+  if (!user) {
+    redirect("/sign-in");
   }
 
   const course = await db.course.findUnique({
     where: {
       id: courseId,
-      isPublished: true,
     },
     include: {
       sections: {
         where: {
           isPublished: true,
         },
+        orderBy: { position: "asc" },
       },
     },
   });
 
   if (!course) {
-    return redirect("/");
+    redirect("/");
+  }
+
+  const isOwner = user.role === "ADMIN" || course.instructorId === user.id;
+
+  if (!course.isPublished && !isOwner) {
+    redirect("/");
   }
 
   const section = await db.section.findUnique({
     where: {
       id: sectionId,
       courseId,
-      isPublished: true,
     },
   });
 
   if (!section) {
-    return redirect(`/courses/${courseId}/overview`);
+    redirect(`/courses/${courseId}/overview`);
   }
+
+  if (!section.isPublished && !isOwner) {
+    redirect(`/courses/${courseId}/overview`);
+  }
+
+  const enrollment = await db.enrollment.findUnique({
+    where: {
+      studentId_courseId: {
+        studentId: user.id,
+        courseId,
+      },
+    },
+  });
 
   const purchase = await db.purchase.findUnique({
     where: {
       customerId_courseId: {
-        customerId: userId,
+        customerId: user.id,
         courseId,
       },
     },
@@ -58,7 +77,7 @@ const SectionDetailsPage = async ({
   let muxData = null;
   let resources: Resource[] = [];
 
-  if (section.isFree || purchase) {
+  if (section.isFree || purchase || enrollment || isOwner) {
     muxData = await db.muxData.findUnique({
       where: {
         sectionId,
@@ -66,7 +85,7 @@ const SectionDetailsPage = async ({
     });
   }
 
-  if (purchase) {
+  if (purchase || enrollment || isOwner) {
     resources = await db.resource.findMany({
       where: {
         sectionId,
@@ -77,7 +96,7 @@ const SectionDetailsPage = async ({
   const progress = await db.progress.findUnique({
     where: {
       studentId_sectionId: {
-        studentId: userId,
+        studentId: user.id,
         sectionId,
       },
     },

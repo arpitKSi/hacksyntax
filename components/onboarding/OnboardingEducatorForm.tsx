@@ -15,6 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { authHelpers, extractApiData } from "@/lib/api-client";
 
 interface OnboardingEducatorFormProps {
   userId: string;
@@ -64,7 +65,18 @@ export default function OnboardingEducatorForm({
       });
 
       if (!response.ok) {
-        throw new Error("Failed to complete onboarding");
+        const errorPayload = await response.json().catch(() => null);
+        const errorMessage =
+          errorPayload?.error?.message ||
+          errorPayload?.message ||
+          "Failed to complete onboarding";
+        throw new Error(errorMessage);
+      }
+
+      const payload = await response.json();
+      const data = extractApiData<{ user?: any }>(payload);
+      if (data?.user) {
+        authHelpers.setUser(data.user);
       }
 
       toast.success("Welcome aboard, Educator! 🎓");
@@ -72,7 +84,9 @@ export default function OnboardingEducatorForm({
       router.refresh();
     } catch (error) {
       console.error("Onboarding error:", error);
-      toast.error("Something went wrong. Please try again.");
+      const message =
+        error instanceof Error && error.message ? error.message : "Something went wrong. Please try again.";
+      toast.error(message);
     } finally {
       setLoading(false);
     }

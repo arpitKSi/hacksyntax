@@ -5,7 +5,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { MuxData, Resource, Section } from "@prisma/client";
 import Link from "next/link";
-import axios from "axios";
+import apiClient from "@/lib/api-client";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 import { ArrowLeft, Loader2, Trash } from "lucide-react";
@@ -67,8 +67,8 @@ const EditSectionForm = ({
   // 2. Define a submit handler.
   const onSubmit = async (values: z.infer<typeof formSchema>) => {
     try {
-      await axios.post(
-        `/api/courses/${courseId}/sections/${section.id}`,
+      await apiClient.patch(
+        `/courses/${courseId}/sections/${section.id}`,
         values
       );
       toast.success("Section Updated");

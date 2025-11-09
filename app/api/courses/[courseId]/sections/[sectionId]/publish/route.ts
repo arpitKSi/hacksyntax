@@ -1,61 +1,53 @@
 import { db } from "@/lib/db";
-import { auth } from "@/shims/clerk-server";
-import { NextRequest, NextResponse } from "next/server";
+import {
+  asyncHandler,
+  successResponse,
+  NotFoundError,
+  ForbiddenError,
+  BadRequestError,
+} from "@/lib/errors";
+import { requireEducator } from "@/lib/api-middleware";
 
-export const POST = async (
-  req: NextRequest,
+export const POST = asyncHandler(async (
+  req: Request,
   { params }: { params: { courseId: string; sectionId: string } }
 ) => {
-  try {
-    const { userId } = auth();
+  const user = await requireEducator(req);
+  const { courseId, sectionId } = params;
 
-    if (!userId) {
-      return new NextResponse("Unauthorized", { status: 401 });
-    }
+  const course = await db.course.findUnique({
+    where: { id: courseId },
+    select: { instructorId: true },
+  });
 
-    const { courseId, sectionId } = params;
-
-    const course = await db.course.findUnique({
-      where: {
-        id: courseId,
-        instructorId: userId,
-      },
-    });
-
-    if (!course) {
-      return new NextResponse("Course Not Found", { status: 404 });
-    }
-
-    const section = await db.section.findUnique({
-      where: {
-        id: sectionId,
-        courseId,
-      },
-    });
-
-    const muxData = await db.muxData.findUnique({
-      where: {
-        sectionId,
-      },
-    });
-
-    if (!section || !muxData || !section.title || !section.description || !section.videoUrl) {
-      return new NextResponse("Missing required fields", { status: 400 });
-    }
-
-    const publishedSection = await db.section.update({
-      where: {
-        id: sectionId,
-        courseId,
-      },
-      data: {
-        isPublished: true,
-      },
-    });
-
-    return NextResponse.json(publishedSection, { status: 200 });
-  } catch (err) {
-    console.log("[section_publish_POST]", err)
-    return new NextResponse("Internal Server Error", { status: 500 });
+  if (!course) {
+    throw new NotFoundError("Course not found");
   }
-}
+
+  if (user.role !== "ADMIN" && course.instructorId !== user.id) {
+    throw new ForbiddenError("You don't have permission to publish this section");
+  }
+
+  const section = await db.section.findUnique({
+    where: { id: sectionId, courseId },
+    include: {
+      muxData: true,
+    },
+  });
+
+  if (!section) {
+    throw new NotFoundError("Section not found");
+  }
+
+  if (!section.title || !section.description || !section.videoUrl) {
+    throw new BadRequestError("Section must include title, description, and video before publishing");
+  }
+
+  const publishedSection = await db.section.update({
+    where: { id: sectionId, courseId },
+    data: { isPublished: true },
+    include: { muxData: true },
+  });
+
+  return successResponse({ section: publishedSection });
+});

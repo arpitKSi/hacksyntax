@@ -1,21 +1,28 @@
-import { auth } from "@/shims/clerk-server";
 import { redirect } from "next/navigation";
 
 import CreateSectionForm from "@/components/sections/CreateSectionForm";
 import { db } from "@/lib/db";
+import { requireServerAuth } from "@/lib/server-auth";
 
-const CourseCurriculumPage = async ({ params }: { params: { courseId: string }}) => {
-  const { userId } = auth()
+const CourseCurriculumPage = async ({ params }: { params: { courseId: string } }) => {
+  const authUser = await requireServerAuth().catch(() => null);
 
-  if (!userId) {
-    return redirect("/sign-in")
+  if (!authUser) {
+    return redirect("/sign-in");
+  }
+
+  if (!["EDUCATOR", "ADMIN"].includes(authUser.role)) {
+    return redirect("/dashboard");
   }
 
   const course = await db.course.findUnique({
-    where: {
-      id: params.courseId,
-      instructorId: userId,
-    },
+    where:
+      authUser.role === "ADMIN"
+        ? { id: params.courseId }
+        : {
+            id: params.courseId,
+            instructorId: authUser.id,
+          },
     include: {
       sections: {
         orderBy: {
@@ -26,12 +33,10 @@ const CourseCurriculumPage = async ({ params }: { params: { courseId: string }})
   });
 
   if (!course) {
-    return redirect("/instructor/courses")
+    return redirect("/instructor/courses");
   }
 
-  return (
-    <CreateSectionForm course={course} />
-  );
-}
+  return <CreateSectionForm course={course} />;
+};
 
 export default CourseCurriculumPage;

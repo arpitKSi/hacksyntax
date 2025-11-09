@@ -1,45 +1,53 @@
-import { db } from "@/lib/db";
-import { auth } from "@/shims/clerk-server";
-import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 
-export const PUT = async (
-  req: NextRequest,
+import { db } from "@/lib/db";
+import {
+  asyncHandler,
+  successResponse,
+  NotFoundError,
+  ForbiddenError,
+} from "@/lib/errors";
+import { requireEducator, parseBody } from "@/lib/api-middleware";
+
+const reorderSchema = z.object({
+  sections: z.array(
+    z.object({
+      id: z.string().uuid(),
+      position: z.number().int().min(0),
+    })
+  ),
+});
+
+export const PUT = asyncHandler(async (
+  req: Request,
   { params }: { params: { courseId: string } }
 ) => {
-  try {
-    const { userId } = auth();
+  const user = await requireEducator(req);
+  const { courseId } = params;
+  const body = await parseBody(req);
+  const data = reorderSchema.parse(body);
 
-    if (!userId) {
-      return new NextResponse("Unauthorized", { status: 401 });
-    }
+  const course = await db.course.findUnique({
+    where: { id: courseId },
+    select: { instructorId: true },
+  });
 
-    const { list } = await req.json();
-
-    const course = await db.course.findUnique({
-      where: {
-        id: params.courseId,
-        instructorId: userId,
-      },
-    });
-
-    if (!course) {
-      return new NextResponse("Course not found", { status: 404 });
-    }
-
-    for (let item of list) {
-      await db.section.update({
-        where: {
-          id: item.id,
-        },
-        data: {
-          position: item.position,
-        },
-      });
-    }
-
-    return new NextResponse("Reorder sections successfully", { status: 200 });
-  } catch (err) {
-    console.log("[reorder_PUT]", err);
-    return new NextResponse("Internal Server Error", { status: 500 });
+  if (!course) {
+    throw new NotFoundError("Course not found");
   }
-};
+
+  if (user.role !== "ADMIN" && course.instructorId !== user.id) {
+    throw new ForbiddenError("You don't have permission to reorder these sections");
+  }
+
+  await Promise.all(
+    data.sections.map((item) =>
+      db.section.update({
+        where: { id: item.id, courseId },
+        data: { position: item.position },
+      })
+    )
+  );
+
+  return successResponse({ reordered: true });
+});

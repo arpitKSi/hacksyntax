@@ -1,21 +1,14 @@
 // Minimal server-side shim for @clerk/nextjs/server used in this project.
-
-// Demo user ID for local development
-const DEMO_USER_ID = "user_demo_123";
+// Returns empty values so pages render without auth checks
 
 export const auth = () => {
-  return { userId: DEMO_USER_ID };
+  // Return empty auth - actual auth happens via API middleware
+  return { userId: null, sessionId: null };
 };
 
 export const currentUser = async () => {
-  return {
-    id: DEMO_USER_ID,
-    emailAddresses: [{ emailAddress: "demo@example.com" }],
-    firstName: "Demo",
-    lastName: "User",
-    fullName: "Demo User",
-    imageUrl: "/avatar_placeholder.jpg",
-  };
+  // Return null - pages should check auth client-side
+  return null;
 };
 
 export const clerkMiddleware = () => {
@@ -30,13 +23,7 @@ export const getAuth = () => ({ userId: null });
 
 export const clerkClient = {
   users: {
-    getUser: async (userId: string) => ({
-      id: userId,
-      imageUrl: "/avatar_placeholder.jpg",
-      fullName: "Demo User",
-      firstName: "Demo",
-      lastName: "User",
-    }),
+    getUser: async (userId: string) => null,
   },
 };
 

@@ -1,44 +1,128 @@
 "use client";
 
-import { UserButton, useAuth } from "@/shims/clerk";
-import { Menu, Search, GraduationCap, BookOpen, Users, LayoutDashboard, Presentation } from "lucide-react";
+import type { ComponentType } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import {
+  Menu,
+  Search,
+  BookOpen,
+  Users,
+  LayoutDashboard,
+  Presentation,
+  FilePlus2,
+  UploadCloud,
+  UserCircle,
+} from "lucide-react";
 
+import { UserButton, useAuth } from "@/shims/clerk";
 import { Button } from "@/components/ui/button";
 import DarkModeToggle from "@/components/custom/DarkModeToggle";
 import {
   Sheet,
   SheetContent,
-  SheetDescription,
   SheetHeader,
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import { authHelpers } from "@/lib/api-client";
+import type { UserRole } from "@/types";
+
+interface NavRoute {
+  label: string;
+  path: string;
+  icon: ComponentType<{ className?: string }>;
+}
 
 const Topbar = () => {
   const { isSignedIn } = useAuth();
   const router = useRouter();
   const pathName = usePathname();
+  const [userRole, setUserRole] = useState<UserRole | null>(null);
+  const [currentUser, setCurrentUser] = useState<any>(null);
 
-  const topRoutes = [
-    { label: "Courses", path: "/", icon: BookOpen },
-    { label: "Educators", path: "/educators", icon: Users },
-    { label: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
-    { label: "Instructor", path: "/instructor/courses", icon: Presentation },
-  ];
+  useEffect(() => {
+    const syncRole = () => {
+      const user = authHelpers.getUser();
+      setUserRole((user?.role as UserRole) ?? null);
+      setCurrentUser(user ?? null);
+    };
 
-  const sidebarRoutes = [
-    { label: "Courses", path: "/instructor/courses" },
-    {
-      label: "Performance",
-      path: "/instructor/performance",
-    },
-  ];
+    const handleFocus = () => syncRole();
+    const handleStorage = () => syncRole();
+
+    syncRole();
+    window.addEventListener("focus", handleFocus);
+    window.addEventListener("storage", handleStorage);
+
+    return () => {
+      window.removeEventListener("focus", handleFocus);
+      window.removeEventListener("storage", handleStorage);
+    };
+  }, [isSignedIn]);
+
+  const isAuthenticated = isSignedIn || !!currentUser?.id;
+  const showLearnerLinks = isAuthenticated && ["STUDENT", "LEARNER", "ADMIN"].includes(userRole ?? "");
+  const showInstructorLinks = isAuthenticated && ["EDUCATOR", "ADMIN"].includes(userRole ?? "");
+
+  const topRoutes = useMemo<NavRoute[]>(() => {
+    const routes: NavRoute[] = [
+      { label: "Courses", path: "/", icon: BookOpen },
+      { label: "Educators", path: "/educators", icon: Users },
+    ];
+
+    if (isAuthenticated) {
+      routes.push({ label: "My Profile", path: "/profile", icon: UserCircle });
+    }
+
+    if (showLearnerLinks) {
+      routes.push({ label: "Dashboard", path: "/dashboard", icon: LayoutDashboard });
+    }
+
+    if (showInstructorLinks) {
+      routes.push({ label: "Instructor", path: "/instructor/courses", icon: Presentation });
+      routes.push({ label: "Create Course", path: "/instructor/create-course", icon: FilePlus2 });
+
+      if (currentUser?.id) {
+        routes.push({
+          label: "My Materials",
+          path: `/educators/${currentUser.id}`,
+          icon: UploadCloud,
+        });
+      }
+    }
+
+    return routes;
+  }, [showLearnerLinks, showInstructorLinks, isAuthenticated, currentUser?.id]);
+
+  const instructorSidebarRoutes = useMemo(
+    () => [
+      { label: "Courses", path: "/instructor/courses" },
+      { label: "Performance", path: "/instructor/performance" },
+    ],
+    []
+  );
 
   const [searchInput, setSearchInput] = useState("");
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  const handleLogout = async () => {
+    if (isLoggingOut) return;
+
+    setIsLoggingOut(true);
+    try {
+      await fetch("/api/auth/signout", { method: "POST" });
+    } catch (error) {
+      console.error("Failed to sign out:", error);
+    } finally {
+      authHelpers.clearTokens();
+      router.push("/sign-in");
+      router.refresh();
+      setIsLoggingOut(false);
+    }
+  };
 
   const handleSearch = () => {
     if (searchInput.trim() !== "") {
@@ -79,7 +163,7 @@ const Topbar = () => {
         </div>
 
         {/* Desktop Navigation */}
-        <nav className="hidden lg:flex items-center gap-1">
+        <nav className="hidden lg:flex items-center gap-1" aria-label="Primary">
           {topRoutes.map((route) => {
             const Icon = route.icon;
             const isActive = pathName === route.path || pathName.startsWith(route.path + "/");
@@ -104,7 +188,18 @@ const Topbar = () => {
 
           {/* Auth Buttons */}
           {isSignedIn ? (
-            <UserButton />
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleLogout}
+                disabled={isLoggingOut}
+                className="font-semibold hover:bg-red-50 hover:text-red-600"
+              >
+                {isLoggingOut ? "Signing out…" : "Sign Out"}
+              </Button>
+              <UserButton />
+            </div>
           ) : (
             <div className="flex items-center gap-2">
               <Button 
@@ -166,7 +261,7 @@ const Topbar = () => {
                 </div>
 
                 {/* Mobile Navigation */}
-                <div className="flex flex-col gap-2 mt-6">
+                <div className="flex flex-col gap-2 mt-6" aria-label="Mobile primary navigation">
                   {topRoutes.map((route) => {
                     const Icon = route.icon;
                     const isActive = pathName === route.path || pathName.startsWith(route.path + "/");
@@ -185,12 +280,12 @@ const Topbar = () => {
                   })}
                 </div>
 
-                {pathName.startsWith("/instructor") && (
+                {showInstructorLinks && (
                   <div className="flex flex-col gap-2 mt-6 pt-6 border-t">
                     <h3 className="text-sm font-semibold text-gray-500 px-4 mb-2">
                       Instructor
                     </h3>
-                    {sidebarRoutes.map((route) => (
+                    {instructorSidebarRoutes.map((route) => (
                       <Link
                         href={route.path}
                         key={route.path}
@@ -203,7 +298,18 @@ const Topbar = () => {
                 )}
 
                 {/* Mobile Auth Buttons */}
-                {!isSignedIn && (
+                {isSignedIn ? (
+                  <div className="flex flex-col gap-2 mt-6 pt-6 border-t">
+                    <Button
+                      variant="outline"
+                      className="w-full font-semibold border-2"
+                      onClick={handleLogout}
+                      disabled={isLoggingOut}
+                    >
+                      {isLoggingOut ? "Signing out…" : "Sign Out"}
+                    </Button>
+                  </div>
+                ) : (
                   <div className="flex flex-col gap-2 mt-6 pt-6 border-t">
                     <Button 
                       variant="outline" 

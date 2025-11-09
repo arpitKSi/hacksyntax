@@ -1,35 +1,37 @@
 import { db } from "@/lib/db";
-import { auth } from "@/shims/clerk-server";
-import { NextRequest, NextResponse } from "next/server";
+import {
+  asyncHandler,
+  successResponse,
+  NotFoundError,
+  ForbiddenError,
+} from "@/lib/errors";
+import { requireEducator } from "@/lib/api-middleware";
 
-export const POST = async (
-  req: NextRequest,
-  { params }: { params: { courseId: string } }
-) => {
-  try {
-    const { userId } = auth();
-    const { courseId } = params;
+/**
+ * POST /api/courses/[courseId]/unpublish
+ * Unpublish a course (hides it from students)
+ */
+export const POST = asyncHandler(async (req: Request, { params }: { params: { courseId: string } }) => {
+  const user = await requireEducator(req);
+  const { courseId } = params;
 
-    if (!userId) {
-      return new Response("Unauthorized", { status: 401 });
-    }
+  const course = await db.course.findUnique({
+    where: { id: courseId },
+  });
 
-    const course = await db.course.findUnique({
-      where: { id: courseId, instructorId: userId },
-    });
-
-    if (!course) {
-      return new Response("Course not found", { status: 404 });
-    }
-
-    const unpusblishedCourse = await db.course.update({
-      where: { id: courseId, instructorId: userId },
-      data: { isPublished: false },
-    });
-
-    return NextResponse.json(unpusblishedCourse, { status: 200 });
-  } catch (err) {
-    console.log("[courseId_unpublish_POST]", err);
-    return new Response("Internal Server Error", { status: 500 });
+  if (!course) {
+    throw new NotFoundError("Course not found");
   }
-};
+
+  // Check ownership (allow admins to unpublish any course)
+  if (user.role !== "ADMIN" && course.instructorId !== user.id) {
+    throw new ForbiddenError("You don't have permission to unpublish this course");
+  }
+
+  const unpublishedCourse = await db.course.update({
+    where: { id: courseId },
+    data: { isPublished: false },
+  });
+
+  return successResponse({ course: unpublishedCourse });
+});

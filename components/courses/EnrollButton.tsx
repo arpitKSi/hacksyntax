@@ -40,7 +40,7 @@ export default function EnrollButton({ courseId, isEnrolled, price }: EnrollButt
   if (isEnrolled) {
     return (
       <Button
-        onClick={() => router.push(`/courses/${courseId}/sections`)}
+        onClick={() => router.push(`/courses/${courseId}/overview`)}
         className="w-full bg-green-600 hover:bg-green-700"
       >
         Continue Learning

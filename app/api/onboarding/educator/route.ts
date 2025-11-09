@@ -1,16 +1,60 @@
-import { auth } from "@/shims/clerk-server";
-import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import {
+  asyncHandler,
+  BadRequestError,
+  ForbiddenError,
+  NotFoundError,
+  successResponse,
+} from "@/lib/errors";
+import { parseBody, requireAuth } from "@/lib/api-middleware";
 
-export const POST = async (req: NextRequest) => {
-  try {
-    const { userId } = auth();
+type EducatorOnboardingPayload = {
+  userId?: string;
+  firstName?: string;
+  lastName?: string;
+  departmentId?: string;
+  designation?: string;
+  facultyId?: string;
+  bio?: string;
+  specialization?: string;
+  officeHours?: string;
+};
 
-    if (!userId) {
-      return new NextResponse("Unauthorized", { status: 401 });
-    }
+export const POST = asyncHandler(async (req: Request) => {
+  const authUser = await requireAuth(req);
+  const payload = await parseBody<EducatorOnboardingPayload>(req);
 
-    const {
+  if (payload.userId && payload.userId !== authUser.id) {
+    throw new ForbiddenError("You can only update your own profile");
+  }
+
+  const {
+    firstName,
+    lastName,
+    departmentId,
+    designation,
+    facultyId,
+    bio,
+    specialization,
+    officeHours,
+  } = payload;
+
+  if (!firstName || !lastName || !departmentId || !designation || !facultyId) {
+    throw new BadRequestError("Missing required fields");
+  }
+
+  const department = await db.department.findUnique({
+    where: { id: departmentId },
+    select: { id: true },
+  });
+
+  if (!department) {
+    throw new NotFoundError("Department not found");
+  }
+
+  const updatedUser = await db.user.update({
+    where: { id: authUser.id },
+    data: {
       firstName,
       lastName,
       departmentId,
@@ -19,33 +63,24 @@ export const POST = async (req: NextRequest) => {
       bio,
       specialization,
       officeHours,
-    } = await req.json();
+      role: authUser.role === "ADMIN" ? "ADMIN" : "EDUCATOR",
+      isOnboarded: true,
+    },
+    select: {
+      id: true,
+      email: true,
+      firstName: true,
+      lastName: true,
+      role: true,
+      departmentId: true,
+      designation: true,
+      facultyId: true,
+      bio: true,
+      specialization: true,
+      officeHours: true,
+      isOnboarded: true,
+    },
+  });
 
-    // Validate required fields
-    if (!firstName || !lastName || !departmentId || !designation || !facultyId) {
-      return new NextResponse("Missing required fields", { status: 400 });
-    }
-
-    // Update user with educator information
-    const user = await db.user.update({
-      where: { clerkId: userId },
-      data: {
-        firstName,
-        lastName,
-        departmentId,
-        designation,
-        facultyId,
-        bio,
-        specialization,
-        officeHours,
-        role: "EDUCATOR",
-        isOnboarded: true,
-      },
-    });
-
-    return NextResponse.json(user);
-  } catch (error) {
-    console.error("[ONBOARDING_EDUCATOR_POST]", error);
-    return new NextResponse("Internal Error", { status: 500 });
-  }
-};
+  return successResponse({ user: updatedUser });
+});

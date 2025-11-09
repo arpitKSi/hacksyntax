@@ -2,6 +2,8 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
+import axios from "axios"
+import { authHelpers, extractApiData } from "@/lib/api-client"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -67,15 +69,31 @@ export default function SignUpPage() {
     setIsLoading(true)
 
     try {
-      // Simulate registration - Replace with actual authentication
-      await new Promise((resolve) => setTimeout(resolve, 2000))
+      // Call actual signup API
+      const response = await axios.post("/api/auth/signup", {
+        email: formData.email,
+        password: formData.password,
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        role: activeRole.toUpperCase(),
+      })
 
-      // Mark user as signed in (for demo purposes)
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem('demo_signed_out')
+      // Store tokens and user data
+      const payload = extractApiData(response.data) as {
+        accessToken?: string
+        refreshToken?: string
+        user?: any
       }
 
-      toast.success(`Account created successfully as ${activeRole}!`)
+      const { accessToken, refreshToken, user } = payload
+
+      if (!accessToken || !refreshToken || !user) {
+        throw new Error("Invalid signup response")
+      }
+      authHelpers.setTokens(accessToken, refreshToken)
+      authHelpers.setUser(user)
+
+      toast.success(`Account created successfully!`)
       
       // Redirect to onboarding based on role
       if (activeRole === "student") {
@@ -83,10 +101,14 @@ export default function SignUpPage() {
       } else if (activeRole === "educator") {
         router.push("/onboarding/educator")
       } else {
-        router.push("/admin/dashboard")
+        router.push("/")
       }
-    } catch (error) {
-      toast.error("Failed to create account. Please try again.")
+      
+      router.refresh()
+    } catch (error: any) {
+      console.error("Signup error:", error)
+      const message = error.response?.data?.message || "Failed to create account"
+      toast.error(message)
     } finally {
       setIsLoading(false)
     }

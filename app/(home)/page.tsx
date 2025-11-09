@@ -1,81 +1,84 @@
-import { db } from "@/lib/db";
-import getCoursesByCategory from "../actions/getCourses";
+"use client"
+
+import { useEffect, useState } from "react"
+import { authHelpers } from "@/lib/api-client"
 import Categories from "@/components/custom/Categories";
 import EnhancedCourseCard from "@/components/courses/EnhancedCourseCard";
 import EducatorCard from "@/components/educators/EducatorCard";
 import FeaturesShowcase from "@/components/home/FeaturesShowcase";
-import { auth } from "@/shims/clerk-server";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { GraduationCap, ArrowRight, Users, Shield } from "lucide-react";
+import apiClient, { extractApiData } from "@/lib/api-client";
 
-export default async function Home() {
-  const { userId } = auth();
+export default function Home() {
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [categories, setCategories] = useState<any[]>([])
+  const [courses, setCourses] = useState<any[]>([])
+  const [departments, setDepartments] = useState<any[]>([])
+  const [featuredEducators, setFeaturedEducators] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
 
-  const categories = await db.category.findMany({
-    orderBy: {
-      name: "asc",
-    },
-    include: {
-      subCategories: {
-        orderBy: {
-          name: "asc",
-        },
-      },
-    },
-  });
+  useEffect(() => {
+    const user = authHelpers.getUser()
+    setIsAuthenticated(!!user)
 
-  const courses = await getCoursesByCategory(null);
+    const fetchData = async () => {
+      try {
+        // Fetch all data in parallel if authenticated
+        if (user) {
+          const [categoriesRes, coursesRes] = await Promise.all([
+            fetch('/api/categories').then(async (r) => (r.ok ? r.json() : [])),
+            apiClient.get('/courses')
+          ])
 
-  // Fetch all departments
-  const departments = await db.department.findMany({
-    orderBy: {
-      name: "asc",
-    },
-    select: {
-      id: true,
-      name: true,
-      code: true,
-    },
-  });
+          const categoriesPayload = Array.isArray(categoriesRes)
+            ? categoriesRes
+            : categoriesRes?.data ?? []
+          const coursesPayload = extractApiData(coursesRes.data) as { data?: any[] } | any[]
+          const normalizedCourses = Array.isArray(coursesPayload)
+            ? coursesPayload
+            : coursesPayload.data ?? []
 
-  // Fetch featured educators (top-rated or most courses)
-  const featuredEducators = await db.user.findMany({
-    where: {
-      role: "EDUCATOR",
-    },
-    include: {
-      department: true,
-      _count: {
-        select: {
-          coursesCreated: true,
-        },
-      },
-    },
-    orderBy: [
-      { totalRatings: "desc" },
-      { rating: "desc" },
-    ],
-    take: 4,
-  });
+          setCategories(categoriesPayload)
+          setCourses(normalizedCourses)
+        }
+      } catch (error) {
+        console.error("Error fetching data:", error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchData()
+  }, [])
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#FDAB04]"></div>
+      </div>
+    )
+  }
   
   return (
-    <div className="md:mt-5 md:px-10 xl:px-16 pb-16">
+    <div className="md:mt-5 pb-16">
+      <div className="mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8">
       {/* Hero Section */}
-      {userId && (
+      {isAuthenticated && (
         <div className="bg-gradient-to-r from-[#FDAB04] via-[#FD8A04] to-[#FD6A04] rounded-2xl p-10 mb-8 shadow-2xl">
           <h1 className="text-4xl font-bold mb-4 text-white">Welcome to Your Learning Journey! 🚀</h1>
           <p className="text-xl mb-6 text-white/90">Explore courses, track your progress, and achieve your learning goals.</p>
           <div className="flex gap-4 flex-wrap">
             <Button size="lg" variant="default" className="bg-white text-[#FDAB04] hover:bg-gray-100 font-bold" asChild>
-              <Link href="/dashboard">
-                Go to Dashboard
+              <Link href="/learning">
+                My Learning
               </Link>
             </Button>
             <Button size="lg" variant="outline" className="border-2 border-white text-white hover:bg-white hover:text-[#FDAB04] font-bold" asChild>
-              <Link href="/learning">
-                My Learning
+              <Link href="/search">
+                Browse Courses
               </Link>
             </Button>
             <Button size="lg" variant="outline" className="border-2 border-white text-white hover:bg-white hover:text-[#FDAB04] font-bold" asChild>
@@ -87,7 +90,7 @@ export default async function Home() {
         </div>
       )}
 
-      {!userId && (
+      {!isAuthenticated && (
         <div className="bg-gradient-to-r from-blue-600 via-purple-600 to-pink-600 rounded-2xl p-12 mb-8 shadow-2xl">
           <div className="text-center mb-8">
             <h1 className="text-5xl font-bold mb-4 text-white">Transform Your Skills with Expert-Led Courses</h1>
@@ -163,7 +166,7 @@ export default async function Home() {
       )}
 
       {/* Comprehensive Features Showcase */}
-      <FeaturesShowcase departments={departments} isSignedIn={!!userId} />
+      <FeaturesShowcase departments={departments} isSignedIn={isAuthenticated} />
 
       {/* Browse by Category */}
       <div className="mt-16">
@@ -212,6 +215,7 @@ export default async function Home() {
         </div>
       </div>
       
+    </div>
     </div>
   );
 }

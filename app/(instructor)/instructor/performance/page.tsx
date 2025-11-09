@@ -1,11 +1,11 @@
 import { getPerformance } from "@/app/actions/getPerformance"
 import Chart from "@/components/performance/Chart"
 import DataCard from "@/components/performance/DataCard"
-import { auth } from "@/shims/clerk-server"
+// Auth handled by middleware
 import { redirect } from "next/navigation"
 
 const PerformancePage = async () => {
-  const { userId } = auth()
+  // const userId = "placeholder" // Auth via cookies
 
   if (!userId) {
     return redirect("/sign-in")

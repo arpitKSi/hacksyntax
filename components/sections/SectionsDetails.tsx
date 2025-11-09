@@ -10,7 +10,7 @@ import {
 } from "@prisma/client";
 import toast from "react-hot-toast";
 import { useState } from "react";
-import axios from "axios";
+import apiClient from "@/lib/api-client";
 import { File, Loader2, Lock } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -43,7 +43,7 @@ const SectionsDetails = ({
   const buyCourse = async () => {
     try {
       setIsLoading(true);
-      const response = await axios.post(`/api/courses/${course.id}/checkout`);
+  const response = await apiClient.post(`/courses/${course.id}/checkout`);
       window.location.assign(response.data.url);
     } catch (err) {
       console.log("Failed to chechout course", err);

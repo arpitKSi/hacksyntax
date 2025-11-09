@@ -1,4 +1,5 @@
-import { db } from "@/lib/db";
+"use client";
+
 import { Course } from "@prisma/client";
 import { BookOpen, Users, Clock, Star, Award } from "lucide-react";
 import Image from "next/image";

@@ -19,7 +19,7 @@ import RichEditor from "@/components/custom/RichEditor";
 import { ComboBox } from "../custom/ComboBox";
 import FileUpload from "../custom/FileUpload";
 import Link from "next/link";
-import axios from "axios";
+import apiClient from "@/lib/api-client";
 import { usePathname, useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 import { Loader2, Trash } from "lucide-react";
@@ -83,21 +83,28 @@ const EditCourseForm = ({
   // 2. Define a submit handler.
   const onSubmit = async (values: z.infer<typeof formSchema>) => {
     try {
-      await axios.patch(`/api/courses/${course.id}`, values);
+  await apiClient.patch(`/courses/${course.id}`, values);
       toast.success("Course Updated");
       router.refresh();
     } catch (err) {
-      console.log("Failed to update the course", err);
-      toast.error("Something went wrong!");
+      console.error("Failed to update the course", err);
+      const message =
+        (err as any)?.response?.data?.error?.message ||
+        (err as any)?.response?.data?.message ||
+        "Unable to update course";
+      toast.error(message);
     }
   };
 
   const routes = [
     {
-      label: "Basic Information",
+      label: "Course Basics",
       path: `/instructor/courses/${course.id}/basic`,
     },
-    { label: "Curriculum", path: `/instructor/courses/${course.id}/sections` },
+    {
+      label: "Upload Content",
+      path: `/instructor/courses/${course.id}/sections`,
+    },
   ];
 
   return (

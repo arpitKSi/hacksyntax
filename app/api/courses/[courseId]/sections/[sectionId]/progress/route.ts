@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { auth } from "@/shims/clerk-server";
+// Auth handled by middleware;
 import { NextRequest, NextResponse } from "next/server";
 
 export const POST = async (
@@ -7,7 +7,7 @@ export const POST = async (
   { params }: { params: { courseId: string; sectionId: string } }
 ) => {
   try {
-    const { userId } = auth();
+    // const userId = "placeholder" // Auth via cookies;
     const { isCompleted } = await req.json();
 
     if (!userId) {

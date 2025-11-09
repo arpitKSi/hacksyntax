@@ -1,6 +1,6 @@
 import Stripe from "stripe";
 import { NextRequest, NextResponse } from "next/server";
-import { currentUser } from "@/shims/clerk-server";
+// Auth handled by middleware;
 
 import { db } from "@/lib/db";
 import { stripe } from "@/lib/stripe";

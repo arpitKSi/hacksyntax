@@ -1,6 +1,6 @@
 "use client";
 
-import axios from "axios";
+import apiClient from "@/lib/api-client";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import toast from "react-hot-toast";
@@ -25,7 +25,7 @@ const ProgressButton = ({
   const onClick = async () => {
     try {
       setIsLoading(true);
-      await axios.post(`/api/courses/${courseId}/sections/${sectionId}/progress`, {
+  await apiClient.post(`/courses/${courseId}/sections/${sectionId}/progress`, {
         isCompleted: !isCompleted,
       });
       toast.success("Progress updated!");

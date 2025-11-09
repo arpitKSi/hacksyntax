@@ -1,4 +1,3 @@
-import { auth } from "@/shims/clerk-server";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
@@ -6,18 +5,26 @@ import { Button } from "@/components/ui/button";
 import { db } from "@/lib/db";
 import { DataTable } from "@/components/custom/DataTable";
 import { columns } from "@/components/courses/Columns";
+import { requireServerAuth } from "@/lib/server-auth";
 
 const CoursesPage = async () => {
-  const { userId } = auth();
+  const authUser = await requireServerAuth().catch(() => null);
 
-  if (!userId) {
+  if (!authUser) {
     return redirect("/sign-in");
   }
 
+  if (!["EDUCATOR", "ADMIN"].includes(authUser.role)) {
+    return redirect("/dashboard");
+  }
+
   const courses = await db.course.findMany({
-    where: {
-      instructorId: userId,
-    },
+    where:
+      authUser.role === "ADMIN"
+        ? {}
+        : {
+            instructorId: authUser.id,
+          },
     orderBy: {
       createdAt: "desc",
     },
